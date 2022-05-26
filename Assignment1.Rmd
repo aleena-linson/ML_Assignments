@@ -1,0 +1,243 @@
+---
+title: "DS 807 Assignment 1"
+author: "Dagny Wilkins, Drew Rigney, Aleena Linson"
+date: "Due: 3/28/2022 by 5:40 pm"
+output: html_document
+#runtime: shiny
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, fig.align="center")
+
+library(tidyverse)
+library(tidytext)
+library(wordcloud)
+library(wordcloud2)
+library(textdata)
+library(igraph)
+library(ggraph)
+library(widyr)
+```
+
+## Group Assignment Guidelines
+
+#### Purpose:
+  
+- Learning Outcomes measured in this assignment: LO1 to LO5
+
+- Content knowledge you’ll gain from doing this assignment: Tokenization, word counts, visualization of frequent words, wordclouds, sentiment analysis, and pairwise correlations.
+
+#### Criteria:
+
+- For this assignment, you can work in groups of up to 3 people.
+
+- For the assignment 1, the grading criteria is 70% based on correctness of the code and 30% based on your communication of results.
+
+- Submission: You have two options. Please choose as you wish.
+
+    1. Upload the knitted document on Canvas.
+    2. Publish your final output in RPubs. <https://rpubs.com/about/getting-started>
+    
+
+
+#### Data Set
+
+For this assignment, we will be using a much simplified version of Movie Reviews data. The entire dataset is available here: <https://www.kaggle.com/c/sentiment-analysis-on-movie-reviews/overview>
+
+The following R chunk reads the data:
+
+```{r}
+movie=read_csv("https://unh.box.com/shared/static/0ehub8p4p2v9zwv08gytaoe0a9tl5e8v.csv")
+movie=distinct(movie, SentenceId, .keep_all=TRUE)
+movie
+```
+
+1. (10 points) Tokenize the data set by word and remove stop words. 
+
+```{r}
+text_df=tibble(movie, text=Phrase)
+text_df
+
+text_tidy=text_df %>%
+  unnest_tokens(word, text)
+text_tidy
+
+text_tidy = text_tidy %>%
+  anti_join(stop_words)
+
+text_tidy %>%
+  count(word, sort=TRUE)
+```
+
+2. (15 points) Arrange the words in descending order by frequency. Based on the most frequent words, do you need to add more words to stop words? Why/Why not?
+
+  Yes, more stop words are needed. "n't", "lrb", "ca", "ve", "ii", "fi" and "rrb" need to be removed since they aren't actual words. Additionally, it may be wise to add film/films and movie/movies to the custom stop word list since those words don't add any additional value or insight since the reviews are obviously about different movies. The word "makes" was also removed since it doesn't provide any value either. 
+
+```{r}
+text_tidy %>%
+  count(word) %>%
+  arrange(desc(n))
+```
+
+3. (15 points) *If necessary anti_join the new stop words.* Visualize the word counts. Did you need to filter by frequency, or look at some `top` words? Why/Why not? What does this plot tell you?
+
+  The team decided to only look at the top 30 most frequent words, so the chart was less overwhelming and only focused on the most prominent words. This plot tells us that the most popular word in this movie reviews data set is story. Additionally, it seems like comedy movies are the most reviewed movie genre in this data set. Drama movies were also commented on. People tend to comment on whether a movie is funny and the characters in it. It seems like the run time may be mentioned frequently since time is one of the most popular words. The story and director of the movie are also commented on. Love and bad were also very popular words. This plot shows us how frequently these specific top 30 words are mentioned across the roughly 9.7k reviews.
+
+```{r}
+#removing additional stop words 
+custom_stop_words <- tribble(
+  # Column names should match stop_words
+  ~word, ~lexicon,
+  "n't", "CUSTOM", "lrb","CUSTOM",
+  "rrb", "CUSTOM", "movie", "CUSTOM", 
+  "movies", "CUSTOM", "film", "CUSTOM", 
+  "films", "CUSTOM", "makes", "CUSTOM", 
+  "ca", "CUSTOM", "ve", "CUSTOM", 
+  "ii", "CUSTOM", "fi", "CUSTOM")
+
+text_tidy_up = text_tidy %>%
+  anti_join(custom_stop_words)
+
+text_tidy_up %>%
+  count(word, sort=TRUE)
+
+text_tidy_up %>%
+  count(word) %>%
+  arrange(desc(n))
+
+#creating graph
+word_counts <- text_tidy_up %>% 
+  count(word) %>% 
+  mutate(word2 = fct_reorder(word, n))%>%
+  top_n(30,n)
+
+ggplot(word_counts, aes(x = word2, y = n)) +
+  geom_col(show.legend=FALSE) +
+  coord_flip() +
+  ggtitle("30 Most Frequent Words in Descending Order")
+```
+
+4. (15 points) Plot a word cloud of these 30 words (choose wordcloud or wordcloud 2). Why did you choose this particular plot or any of the parameters? Looking at this plot, what information do you gain?
+
+  Word clouds are a great method to see what the audience truly thinks about a topic, and they're more than just a frequency chart. They're simple to read and understand. We specified that the word cloud should have a max of 30 words since the plot should only show the 30 most frequent words. This word cloud makes words such as comedy, story, time, characters, and funny stand out. This shows us which words are most frequently used in the reviews in a new way. The team wanted to try using both wordcloud options. The team preferred the look of wordcloud 2. It also shows the frequency of the word count if the user hovers over a word which is an added benefit.
+
+```{r}
+w_count = text_tidy_up %>%
+  count(word,sort=TRUE)
+
+wordcloud(word= w_count$word,
+          freq=w_count$n,
+          color="red",
+          max.words=30)
+  
+w_count=w_count[1:30,]
+#dev.new(width = 1000, height = 1000, unit = "px")
+wordcloud2(w_count, color = "random-light" )
+```
+
+6. (20 points) Choose a sentiment library and perform a sentiment analysis, i.e., join the data with sentiments, count sentiments, and plot sentiments. What does your analysis tells you?
+
+  The team decided to create another set of custom stop words. The original removed movies and films since we knew the data set was about movie reviews, and we didn't want them to take up spots in the word cloud and column chart. For sentiment analysis, these words may provide value especially in the bigram section. This plot shows us that negative words appear more frequently in reviews compared to positive words. This implies that in this data set, there are most likely more negative reviews compared to positive reviews. When it comes to sentiment, bad is the most popular word. This lexicon does a good job classifying words into the right category. 
+
+```{r}
+custom_stop_words_sent <- tribble(
+  # Column names should match stop_words
+  ~word, ~lexicon,
+  "n't", "CUSTOM",
+  "lrb", "CUSTOM",
+  "rrb", "CUSTOM",
+  "ve", "CUSTOM",
+  "ca", "CUSTOM",
+  "ii", "CUSTOM",
+  "fi", "CUSTOM")
+
+text_tidy_sent = text_tidy %>%
+  anti_join(custom_stop_words_sent)
+
+sentiment_title = text_tidy_sent %>%
+  inner_join(get_sentiments("loughran"))
+
+sentiment_title %>%
+  count(sentiment)
+
+sentiment_title2 = sentiment_title %>%
+  filter(sentiment %in% c("positive", "negative", "constraining", "litigious", "uncertainty"))
+
+sent_count =  sentiment_title2 %>%
+  count(word, sentiment) %>%
+  group_by(sentiment) %>%
+  top_n(10, n) %>%
+  ungroup() %>%
+  mutate(word2=fct_reorder(word, n))
+
+ggplot(sent_count, aes(x=word2, y=n, fill=sentiment)) +
+  geom_col(show.legend=FALSE)+
+  facet_wrap(~sentiment, scales="free")+
+  coord_flip()+
+  labs(title = "Sentiment Word Counts", x="Words")
+```
+
+7. (15 points) Produce a bigram and calculate pairwise correlations. What does your analysis tells you?
+
+  The bigram plot helps in the interpretation of word relationships. The majority of the words are paired together, such as "human-nature", "James-Bond", and "original-idea". We can also notice that words like "movie", "action", "drama", "comedy", "director", and "film" have a lot of similar node centers.
+
+  Looking at the pairwise correlation, we can see that most of the words have a high correlation. The highest positive correlation that we can see is for cheek-tongue which is 0.9117. The data set has a high pair wise correlation. It is apparent that Adam and Sandler are correlated as well as Eddie and Murphy. This makes sense since they are very famous actors.
+
+```{r}
+data=movie[,"Phrase"]
+ngram_titles = data %>%
+  unnest_tokens(bigram, Phrase, token="ngrams", n=2)
+ngram_titles
+
+ngram_titles %>%
+  count(bigram, sort=TRUE)
+
+filtered_titles = ngram_titles %>%
+  separate(bigram, c("word1", "word2"), sep=" ") %>%
+  filter(!word1 %in% stop_words$word) %>%
+  filter(!word2 %in% stop_words$word)%>%
+  filter(!word1 %in% custom_stop_words_sent$word)%>%
+  filter(!word2 %in% custom_stop_words_sent$word)
+filtered_titles
+
+filtered_titles_united = filtered_titles %>%
+  unite(bigram, c("word1", "word2"), sep=" ") 
+
+filtered_titles_united %>%
+  count(bigram, sort=TRUE)
+
+bigram_count=filtered_titles %>%
+  count(word1, word2, sort=TRUE)
+
+bigram_network = bigram_count %>%
+  filter( n > 2) %>%
+  graph_from_data_frame()
+bigram_network
+
+set.seed(1234)
+
+ggraph(bigram_network, layout = "fr") +
+  geom_edge_link() +
+  geom_node_point() +
+  geom_node_text(aes(label = name), vjust = 1, hjust = 1)
+
+#pairwise correlations
+data.sm=movie[, c("Phrase")]
+corr_words= data.sm %>%
+  mutate(section = row_number() %/% 10) %>%
+  filter(section > 0) %>%
+  unnest_tokens(word,Phrase) %>%
+  filter(!word %in% stop_words$word)%>%
+  filter(!word %in% custom_stop_words_sent$word)
+
+word_cors <- corr_words %>%
+  group_by(word) %>%
+  filter(n() >= 5) %>%
+  pairwise_cor(word,section, sort = TRUE)
+word_cors
+```
+
+8. (10 points) What is your learning outcome in this analysis? What would you like me to to notice in your analysis?
+
+  This assignment helped us gain familiarity with exploratory data analysis with text data. We learned how to create custom stop words and perform sentiment analysis. We would like you to notice our word cloud 2 since it shows the most frequent words in a nice format. We would also like you to notice our bigram chart since it shows the relationships between various words and gives insights into the word relationships.
+
